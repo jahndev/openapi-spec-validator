@@ -10,50 +10,78 @@ const app = express();
 const PORT = process.env.PORT || 3000; // Render sets the PORT environment variable
 
 // Configure multer for file uploads.
-// We'll save files to a temporary 'uploads' directory.
 const upload = multer({ dest: 'uploads/' });
 
+// --- Helper Function ---
+// This function will parse the raw JSON output from Spectral and transform it.
+const formatSpectralOutput = (spectralJsonString) => {
+  const results = JSON.parse(spectralJsonString);
+  const formatted = {
+    warnings: [],
+    errors: [],
+  };
+
+  for (const item of results) {
+    const newItem = {
+      title: item.code,
+      description: item.message,
+      // Join the path array into a dot-separated string for clarity.
+      element: item.path.join('.'),
+    };
+
+    // Spectral uses severity levels: 0 for error, 1 for warning.
+    if (item.severity === 1) {
+      formatted.warnings.push(newItem);
+    } else {
+      formatted.errors.push(newItem);
+    }
+  }
+
+  return formatted;
+};
+
+
 // --- API Endpoint ---
-// Sets up the POST endpoint at /yaml/validate
-// 'upload.single('file')' is the middleware that handles the file upload.
-// It expects the form field name to be 'file'.
 app.post('/yaml/validate', upload.single('file'), (req, res) => {
-  // 1. Check if a file was actually uploaded
   if (!req.file) {
-    return res.status(400).send('No file uploaded.');
+    return res.status(400).json({ error: 'No file uploaded.' });
   }
 
   const filePath = req.file.path;
-  // Use path.resolve to get an absolute path, which is safer for shell commands
   const absoluteFilePath = path.resolve(filePath);
+  const rulesetPath = path.resolve('.spectral.yaml');
 
-  // 2. Construct the Spectral CLI command
-  const command = `spectral lint ${absoluteFilePath}`;
+  // 2. Construct the Spectral CLI command with JSON format output
+  // We add --format=json to get machine-readable output.
+  const command = `spectral lint "${absoluteFilePath}" --ruleset "${rulesetPath}" --format=json`;
   console.log(`Executing command: ${command}`);
 
-  // 3. Execute the command
   exec(command, (error, stdout, stderr) => {
-    // 4. Clean up: ALWAYS delete the temporary file afterwards
+    // 4. Clean up the temporary file
     fs.unlink(filePath, (err) => {
       if (err) console.error(`Failed to delete temporary file: ${filePath}`, err);
     });
+    
+    // If there's a serious execution error (not a linting error), return it.
+    if (stderr && !stdout) {
+        console.error(`Spectral execution error: ${stderr}`);
+        return res.status(500).json({ error: 'Failed to run spectral validation.', details: stderr });
+    }
 
-    // Spectral returns a non-zero exit code (triggering 'error') when it finds issues.
-    // This is expected behavior. The actual linting result is in stdout/stderr.
-    // So, we always return the output, regardless of the exit code.
-    console.log(`Spectral stdout: ${stdout}`);
-    if (stderr) console.error(`Spectral stderr: ${stderr}`);
-
-    // 5. Send the result back to the client
-    // Set content-type to plain text for better readability of CLI output
-    res.setHeader('Content-Type', 'text/plain');
-    res.status(200).send(stdout || stderr);
+    try {
+      // 5. Parse and format the output
+      // Even with linting "errors", Spectral outputs valid JSON to stdout
+      const jsonResponse = formatSpectralOutput(stdout);
+      res.status(200).json(jsonResponse);
+    } catch (parseError) {
+      console.error('Error parsing Spectral output:', parseError);
+      res.status(500).json({ error: 'Failed to parse validation results.', rawOutput: stdout });
+    }
   });
 });
 
 // --- Server Startup ---
 app.listen(PORT, () => {
-  // Create the uploads directory if it doesn't exist on startup
   if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
   }

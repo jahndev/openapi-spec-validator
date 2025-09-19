@@ -1,17 +1,18 @@
 {
-  "name": "spectral-lint-api",
+  "name": "yaml-lint-api",
   "version": "1.0.0",
-  "description": "A simple API to validate YAML files using Spectral.",
+  "description": "A web service to validate YAML files using Spectral and fix them with an AI agent.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@stoplight/spectral-cli": "^6.11.0",
+    "@stoplight/spectral-cli": "^6.11.2",
     "express": "^4.18.2",
-    "multer": "^1.4.5-lts.1"
+    "js-yaml": "^4.1.0",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^2.6.9"
   }
 }

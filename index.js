@@ -85,8 +85,10 @@ ${JSON.stringify(issuesChunk, null, 2)}
 
     if (!response.ok) {
         const errorBody = await response.text();
-        console.error(`AI API Error: ${response.statusText}`, errorBody);
-        return `AI fix failed: API returned status ${response.status}.`;
+        // Log the detailed error for server-side debugging
+        console.error(`AI API Error: ${response.status} ${response.statusText}. Response Body:`, errorBody);
+        // Return the detailed error so it can be propagated
+        return `AI fix failed: API returned status ${response.status}. Details: ${errorBody}`;
     }
 
     const result = await response.json();
@@ -205,3 +207,4 @@ app.listen(PORT, () => {
   }
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+

@@ -11,6 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 // SWITCHING TO GROQ API KEY
 const GROQ_API_KEY = process.env.GROQ_API_KEY; // Get API Key from Render environment variables
+const GROQ_AI_MODEL = process.env.GROQ_AI_MODEL; // Get API Key from Render environment variables
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -76,7 +77,7 @@ ${JSON.stringify(spectralIssues, null, 2)}
       role: "user",
       content: prompt,
     }],
-    model: "llama3-8b-8192", // Using a fast, capable model
+    model: GROQ_AI_MODEL, // Using a fast, capable model
   };
 
   try {
@@ -180,4 +181,5 @@ app.listen(PORT, () => {
   }
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+
 

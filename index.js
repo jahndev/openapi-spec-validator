@@ -54,7 +54,7 @@ const formatSpectralOutput = (spectralJsonString) => {
         severity: severity,
         rule: item.code,
         message: item.message,
-        path: item.path,
+        path: item.path.join('.'), // <-- MODIFICADO: Muestra el path como una sola cadena
         location: {
           // Spectral's range is 0-indexed, so we add 1 for human-readable line/char numbers
           line: item.range.start.line + 1,
@@ -134,4 +134,3 @@ app.listen(PORT, () => {
   }
   console.log(`Server is running on http://localhost:${PORT}`);
 });
-

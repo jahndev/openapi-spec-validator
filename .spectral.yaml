@@ -1,0 +1,6 @@
+# This file tells Spectral which validation rules to apply.
+# 'spectral:oas' is the recommended, built-in ruleset for OpenAPI specifications (v2 & v3).
+extends: spectral:oas
+
+# You can add your own custom rules below this line in the future if needed.
+rules: {}

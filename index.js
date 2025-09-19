@@ -9,9 +9,8 @@ const fetch = require('node-fetch'); // For making API calls to the AI
 // --- Configuration ---
 const app = express();
 const PORT = process.env.PORT || 3000;
-// SWITCHING TO GROQ API KEY
 const GROQ_API_KEY = process.env.GROQ_API_KEY; // Get API Key from Render environment variables
-const GROQ_AI_MODEL = process.env.GROQ_AI_MODEL; // Get API Key from Render environment variables
+const GROQ_AI_MODEL = process.env.GROQ_AI_MODEL || 'gemma2-9b-it'; // Get AI Model, with a default
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -43,41 +42,35 @@ const formatSpectralOutput = (spectralJsonString) => {
   }
 };
 
-// --- UPDATED AI Helper Function for Groq ---
-const getAiFixes = async (yamlContent, spectralIssues) => {
-  if (!GROQ_API_KEY) {
-    console.log("GROQ_API_KEY not found. Skipping AI fix.");
-    return "AI fix skipped: GROQ_API_KEY not configured on the server.";
-  }
-
+// --- NEW AI Helper: Handles a single API call with a chunk of issues ---
+const callAiWithChunk = async (yamlContent, issuesChunk) => {
   const apiUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
   const prompt = `
 You are an expert API developer specializing in OpenAPI specifications.
-Below is an OpenAPI YAML file and a list of validation errors from the Spectral linter.
-Your task is to fix the YAML file to resolve these issues.
-Only return the complete, corrected YAML content inside a single YAML block. Do not include any other text or explanations.
+Below is an OpenAPI YAML file and a specific list of validation errors from the Spectral linter.
+Your task is to fix the YAML file to resolve ONLY the issues listed below. Do not modify other parts of the file.
+Return the complete, corrected YAML content inside a single YAML block. Do not include any other text or explanations.
 
-**Original YAML:**
+**Current YAML:**
 \`\`\`yaml
 ${yamlContent}
 \`\`\`
 
-**Spectral Issues (JSON):**
+**Spectral Issues to Fix in this step:**
 \`\`\`json
-${JSON.stringify(spectralIssues, null, 2)}
+${JSON.stringify(issuesChunk, null, 2)}
 \`\`\`
 
 **Corrected YAML:**
 `;
 
-  // Groq uses an OpenAI-compatible request structure
   const payload = {
     messages: [{
       role: "user",
       content: prompt,
     }],
-    model: GROQ_AI_MODEL, // Using a fast, capable model
+    model: GROQ_AI_MODEL, // Use the configurable model
   };
 
   try {
@@ -104,7 +97,6 @@ ${JSON.stringify(spectralIssues, null, 2)}
         return "AI fix failed: Could not extract corrected YAML from AI response.";
     }
     
-    // Clean the response to get only the YAML block
     const yamlMatch = text.match(/```yaml\n([\s\S]*?)\n```/);
     return yamlMatch ? yamlMatch[1] : text.trim();
 
@@ -112,6 +104,41 @@ ${JSON.stringify(spectralIssues, null, 2)}
     console.error('Error calling AI API:', error);
     return "AI fix failed: An exception occurred while contacting the AI service.";
   }
+};
+
+
+// --- REFACTORED AI Orchestrator: Loops through issues in chunks ---
+const getAiFixes = async (initialYamlContent, spectralIssues) => {
+  if (!GROQ_API_KEY) {
+    console.log("GROQ_API_KEY not found. Skipping AI fix.");
+    return "AI fix skipped: GROQ_API_KEY not configured on the server.";
+  }
+
+  let currentYaml = initialYamlContent;
+  const allIssues = [...spectralIssues.errors, ...spectralIssues.warnings]; // Combine all issues
+  const CHUNK_SIZE = 5;
+
+  console.log(`Starting iterative AI fix for ${allIssues.length} total issues.`);
+
+  while (allIssues.length > 0) {
+    const chunkToProcess = allIssues.splice(0, CHUNK_SIZE); // Get the next chunk of 5
+    
+    console.log(`Processing a chunk of ${chunkToProcess.length} issues. ${allIssues.length} remaining.`);
+    
+    const fixedYamlFromChunk = await callAiWithChunk(currentYaml, chunkToProcess);
+
+    // If the AI call fails for any chunk, stop the process and return the error.
+    if (fixedYamlFromChunk.startsWith('AI fix failed:')) {
+      console.error("Stopping iteration due to AI error.", fixedYamlFromChunk);
+      return fixedYamlFromChunk;
+    }
+
+    // The output of this iteration becomes the input for the next one.
+    currentYaml = fixedYamlFromChunk;
+  }
+
+  console.log("Finished all AI fix iterations successfully.");
+  return currentYaml;
 };
 
 
@@ -141,11 +168,9 @@ app.post('/yaml/validate', upload.single('file'), (req, res) => {
     }
 
     try {
-      // If stdout is empty, it means no issues were found.
       const spectralOutput = stdout ? stdout : '[]'; 
       const spectralJsonResponse = formatSpectralOutput(spectralOutput);
 
-      // If there are no errors or warnings, we can skip the AI call.
       if (spectralJsonResponse.errors.length === 0 && spectralJsonResponse.warnings.length === 0) {
         return res.status(200).json({
           ...spectralJsonResponse,
@@ -153,7 +178,6 @@ app.post('/yaml/validate', upload.single('file'), (req, res) => {
         });
       }
 
-      // Call the AI agent if there are issues
       getAiFixes(originalYamlContent, spectralJsonResponse)
         .then(fixedYaml => {
             const finalResponse = {
@@ -181,5 +205,3 @@ app.listen(PORT, () => {
   }
   console.log(`Server is running on http://localhost:${PORT}`);
 });
-
-

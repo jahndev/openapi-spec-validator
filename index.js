@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const upload = multer({ dest: 'uploads/' });
 
-// --- REFACTORED Helper Function ---
+// --- Helper Function ---
 /**
  * Parses the raw JSON string output from Spectral into a more useful and
  * detailed structured object.
@@ -29,7 +29,9 @@ const formatSpectralOutput = (spectralJsonString) => {
   };
 
   try {
-    const results = JSON.parse(spectralJsonString);
+    // FIX: Trim the input string to remove trailing newlines/whitespace before parsing.
+    const results = JSON.parse(spectralJsonString.trim());
+    
     if (results.length === 0) {
       return formatted; // Return the default valid state
     }
@@ -54,19 +56,16 @@ const formatSpectralOutput = (spectralJsonString) => {
         severity: severity,
         rule: item.code,
         message: item.message,
-        path: item.path.join('.'), // <-- MODIFICADO: Muestra el path como una sola cadena
+        path: item.path.join('.'),
         location: {
-          // Spectral's range is 0-indexed, so we add 1 for human-readable line/char numbers
           line: item.range.start.line + 1,
           character: item.range.start.character + 1,
         },
       });
     }
     
-    // Sort issues by line number for easier reading
     formatted.issues.sort((a, b) => a.location.line - b.location.line);
 
-    // Calculate final summary status
     formatted.summary.totalIssues = results.length;
     if (formatted.summary.errorCount > 0) {
       formatted.summary.status = 'invalid';
@@ -77,7 +76,6 @@ const formatSpectralOutput = (spectralJsonString) => {
     return formatted;
   } catch (e) {
     console.error("Error parsing Spectral JSON:", e);
-    // On parsing failure, return a structured error
     return {
       summary: {
         status: 'error',
@@ -103,7 +101,6 @@ app.post('/yaml/validate', upload.single('file'), (req, res) => {
   console.log(`Executing command: ${command}`);
 
   exec(command, (error, stdout, stderr) => {
-    // Always delete the temporary file after execution
     fs.unlink(filePath, (err) => {
       if (err) console.error(`Failed to delete temporary file: ${filePath}`, err);
     });
@@ -112,12 +109,12 @@ app.post('/yaml/validate', upload.single('file'), (req, res) => {
         console.error(`Spectral execution error: ${stderr}`);
         return res.status(500).json({ error: 'Failed to run spectral validation.', details: stderr });
     }
-
-    // Handle cases where Spectral might return no output for a valid file
-    const spectralOutput = stdout ? stdout : '[]';
+    
+    // Handle cases where Spectral might return no output for a valid file.
+    // If stdout is empty or just whitespace, default to an empty array string.
+    const spectralOutput = stdout && stdout.trim() ? stdout : '[]';
     const spectralJsonResponse = formatSpectralOutput(spectralOutput);
 
-    // Use a 422 status code if the document is invalid, which is more specific than 200
     if (spectralJsonResponse.summary.status === 'invalid') {
         return res.status(422).json(spectralJsonResponse);
     }
@@ -128,7 +125,6 @@ app.post('/yaml/validate', upload.single('file'), (req, res) => {
 
 // --- Server Startup ---
 app.listen(PORT, () => {
-  // Ensure the uploads directory exists
   if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
   }

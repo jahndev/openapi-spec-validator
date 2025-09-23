@@ -29,13 +29,9 @@ const formatSpectralOutput = (spectralJsonString) => {
   };
 
   try {
-    // FIX: Trim the input string to remove trailing newlines/whitespace before parsing.
-    const results = JSON.parse(spectralJsonString.trim());
+    // The input is already trimmed from the main function.
+    const results = JSON.parse(spectralJsonString);
     
-    if (results.length === 0) {
-      return formatted; // Return the default valid state
-    }
-
     const severityMap = {
       0: 'error',
       1: 'warn',
@@ -75,6 +71,7 @@ const formatSpectralOutput = (spectralJsonString) => {
 
     return formatted;
   } catch (e) {
+    // This catch block handles JSON parsing errors like the one you mentioned.
     console.error("Error parsing Spectral JSON:", e);
     return {
       summary: {
@@ -110,11 +107,27 @@ app.post('/yaml/validate', upload.single('file'), (req, res) => {
         return res.status(500).json({ error: 'Failed to run spectral validation.', details: stderr });
     }
     
-    // Handle cases where Spectral might return no output for a valid file.
-    // If stdout is empty or just whitespace, default to an empty array string.
-    const spectralOutput = stdout && stdout.trim() ? stdout : '[]';
+    // Trim the output to handle potential whitespace issues.
+    const spectralOutput = stdout ? stdout.trim() : '';
+
+    // --- NEW LOGIC ---
+    // If the output is empty or just an empty array, the file is perfectly valid.
+    if (!spectralOutput || spectralOutput === '[]') {
+      return res.status(200).json({ message: '✅ YAML is valid!' });
+    }
+    
+    // If there are issues, proceed with formatting them.
     const spectralJsonResponse = formatSpectralOutput(spectralOutput);
 
+    // Handle potential JSON parsing errors caught in the helper function.
+    if (spectralJsonResponse.summary.status === 'error') {
+        return res.status(500).json({
+            error: spectralJsonResponse.summary.message,
+            details: spectralJsonResponse.rawError
+        });
+    }
+
+    // Return the detailed issues with the appropriate status code.
     if (spectralJsonResponse.summary.status === 'invalid') {
         return res.status(422).json(spectralJsonResponse);
     }
@@ -130,3 +143,4 @@ app.listen(PORT, () => {
   }
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+

@@ -102,14 +102,19 @@ app.post('/yaml/validate', upload.single('file'), (req, res) => {
     try {
         spectralResults = JSON.parse(spectralOutput);
     } catch (e) {
-        console.error("Critical Error: Failed to parse Spectral JSON.", e);
-        console.error("--- Raw stdout from Spectral that caused the error ---");
-        console.error(stdout);
-        console.error("----------------------------------------------------");
-        return res.status(500).json({
-            error: 'Failed to parse Spectral output. spectralOutput:'+ spectralOutput,
-            details: e.message,
-        });
+        // Caso de éxito: Spectral no encontró errores
+        if (spectralOutput.includes("No results with a severity of 'error' found!")) {
+          return res.status(200).json({ message: '✅ YAML es válido!' });
+        } else {
+          console.error("Critical Error: Failed to parse Spectral JSON.", e);
+          console.error("--- Raw stdout from Spectral that caused the error ---");
+          console.error(stdout);
+          console.error("----------------------------------------------------");
+          return res.status(500).json({
+              error: 'Failed to parse Spectral output. spectralOutput:'+ spectralOutput,
+              details: e.message,
+          });
+        }
     }
 
     // If the parsed result is an empty array, it's also valid.
@@ -135,5 +140,6 @@ app.listen(PORT, () => {
   }
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+
 
 

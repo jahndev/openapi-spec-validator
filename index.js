@@ -107,7 +107,7 @@ app.post('/yaml/validate', upload.single('file'), (req, res) => {
         console.error(stdout);
         console.error("----------------------------------------------------");
         return res.status(500).json({
-            error: 'Failed to parse Spectral output.',
+            error: 'Failed to parse Spectral output. spectralOutput:'+ spectralOutput,
             details: e.message,
         });
     }
@@ -135,4 +135,5 @@ app.listen(PORT, () => {
   }
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+
 
